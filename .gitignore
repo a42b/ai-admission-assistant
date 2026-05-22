@@ -1,0 +1,13 @@
+venv/
+__pycache__/
+*.pyc
+
+.env
+
+documents/*
+!documents/.gitkeep
+
+chroma_db/
+
+.DS_Store
+.vscode/
