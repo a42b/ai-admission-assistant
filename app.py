@@ -16,21 +16,20 @@ EMBED_MODEL = "nomic-embed-text"
 
 
 PROMPT = """
-Ти — асистент для абітурієнтів КПІ ім. Ігоря Сікорського.
+Ти — офіційний штучний інтелект-асистент для абітурієнтів Національного технічного університету України «Київський політехнічний інститут імені Ігоря Сікорського» (КПІ).
 
-Відповідай українською мовою, чітко, структуровано і без зайвих припущень.
-Використовуй тільки інформацію з наданого контексту.
-Не вигадуй фактів, дат, вартості навчання, назв спеціальностей, освітніх програм або правил вступу.
+Твоє завдання — відповідати на питання користувача виключно на основі наданого контексту. 
+Відповідай українською мовою, чітко, лаконічно та структуровано.
 
 Важливі правила:
 1. ФІОТ — це факультет інформатики та обчислювальної техніки.
 2. Кафедра ОТ — це кафедра обчислювальної техніки всередині ФІОТ, а не весь факультет.
-3. Якщо користувач питає про факультет ФІОТ загалом, відповідай про факультет загалом.
+3. Якщо користувач питає про факультет ФІОТ загалом, відповідай лише про факультет.
 4. Якщо користувач питає про кафедру ОТ, відповідай саме про кафедру ОТ.
-5. Не називай ФІОТ фізико-інформаційним факультетом.
-6. Якщо відповідь є у контексті, обов’язково використай її.
-7. Якщо в одному джерелі є інформація про факультет, а в іншому про кафедру, не змішуй їх.
-8. Якщо точної відповіді справді немає в контексті, скажи:
+5. Ніколи не називай ФІОТ "фізико-інформаційним факультетом".
+6. Використовуй тільки факти, дати, ціни та бали, які чітко вказані в контексті. Не вигадуй та не доповнюй інформацію від себе.
+7. Якщо в одному джерелі є інформація про факультет, а в іншому про кафедру, не змішуй їх в одну сутність.
+8. Якщо точної відповіді на питання в контексті немає або інформація відсутня, ти ПОВИНЕН відповісти строго цією фразою:
 "У наданих документах я не знайшов точної відповіді на це питання."
 
 Контекст:
@@ -164,7 +163,7 @@ def get_docs_by_source_contains(source_part: str):
     return result
 
 
-def get_keyword_docs(question: str, limit: int = 12):
+def get_keyword_docs(question: str, limit: int = 5):
     q = normalize(question)
     keywords = question_keywords(question)
 
@@ -221,15 +220,15 @@ def get_keyword_docs(question: str, limit: int = 12):
     return result
 
 
-def get_vector_docs(question: str, limit: int = 8):
+def get_vector_docs(question: str, limit: int = 4):
     vectorstore = load_vectorstore()
 
     retriever = vectorstore.as_retriever(
         search_type="mmr",
         search_kwargs={
             "k": limit,
-            "fetch_k": 40,
-            "lambda_mult": 0.35,
+            "fetch_k": 20,
+            "lambda_mult": 0.5,
         },
     )
 
@@ -285,15 +284,16 @@ def retrieve_docs(question: str):
             if "fiot_ot_bachelor" in source:
                 docs.append(doc)
 
-    keyword_docs = get_keyword_docs(question, limit=12)
+    keyword_docs = get_keyword_docs(question, limit=5)
     docs.extend(keyword_docs)
 
-    vector_docs = get_vector_docs(question, limit=8)
+    vector_docs = get_vector_docs(question, limit=4)
     docs.extend(vector_docs)
 
     docs = deduplicate_docs(docs)
 
-    return docs[:18]
+    # Максимальный лимит контекста — 5 чанков для стабильности локальной модели
+    return docs[:5]
 
 
 def answer_question(question: str):
@@ -314,6 +314,7 @@ def answer_question(question: str):
     return response.content, docs
 
 
+# Оставляем интерфейс Streamlit для локальной отладки данных
 st.set_page_config(
     page_title="AI Admission Assistant",
     page_icon="🎓",
