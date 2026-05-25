@@ -2,19 +2,27 @@ import os
 import streamlit as st
 import speech_recognition as sr
 import requests
-from gtts import gTTS  # Додали локальний синтез прямо у тестер
+from gtts import gTTS
 
-# Нам тепер потрібен ЛИШЕ ОДИН ендпоінт — текстовий
+# Наш єдиний і незмінний текстовий ендпоінт
 API_URL_TEXT = "http://localhost:8000/api/ask"
 
 AUDIO_DIR = "static_audio"
 os.makedirs(AUDIO_DIR, exist_ok=True)
 
-st.set_page_config(page_title="Voice Assistant Tester", page_icon="🎙️")
-st.title("🎙️ Голосовий асистент ФІОТ КПІ")
-st.caption("Демонстраційний інтерфейс для перевірки телефонного сценарію (STT/TTS)")
+st.set_page_config(page_title="AI Admission Assistant", layout="centered")
+st.title("AI Admission Assistant ФІОТ КПІ")
+st.caption("Уніфікований діалоговий інтерфейс приймальної комісії")
 
+# Ініціалізація історії чату в пам'яті Streamlit
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
+# Ініціалізація стану голосового режиму
+if "voice_active" not in st.session_state:
+    st.session_state.voice_active = False
+
+# Функція розпізнавання мови (STT)
 def record_and_recognize():
     recognizer = sr.Recognizer()
     recognizer.pause_threshold = 1.0
@@ -22,62 +30,101 @@ def record_and_recognize():
     recognizer.dynamic_energy_threshold = True
 
     with sr.Microphone() as source:
-        st.info("Слухаю вас... Говоріть.")
+        st.info("Голосовий чат активний. Слухаю вас... Говоріть.")
         recognizer.adjust_for_ambient_noise(source, duration=0.8)
-
         try:
             audio = recognizer.listen(source, timeout=5, phrase_time_limit=8)
+            st.info("Розпізнаю мовлення...")
+            return recognizer.recognize_google(audio, language="uk-UA")
         except sr.WaitTimeoutError:
-            st.warning("Я не почув мовлення. Спробуйте ще раз.")
+            return None
+        except Exception:
             return None
 
-    st.info("Розпізнаю мовлення...")
-
+# Єдина функція відправки запиту на бекенд та генерації аудіо
+def send_to_backend(question):
+    # Додаємо повідомлення користувача в історію чату
+    st.session_state.messages.append({"role": "user", "text": question})
+    
     try:
-        return recognizer.recognize_google(audio, language="uk-UA")
-    except sr.UnknownValueError:
-        st.warning("Не вдалося розпізнати мовлення. Спробуйте сказати чіткіше.")
+        # Робимо ОДИН спільний запит до API бекенду
+        # Передаємо режим 'voice', щоб qwen генерував лаконічні репліки без сміття
+        res = requests.post(
+            API_URL_TEXT,
+            json={"question": question, "mode": "voice"},
+            timeout=180,
+        )
+        
+        if res.status_code == 200:
+            answer = res.json().get("answer", "")
+            
+            # Додаємо відповідь асистента в історію
+            st.session_state.messages.append({"role": "assistant", "text": answer})
+            return answer
+        else:
+            st.error("Помилка сервера бекенду.")
+            return None
+    except Exception as e:
+        st.error(f"Не вдалося з'єднатися з api.py: {e}")
         return None
-    except sr.RequestError as e:
-        st.error(f"Помилка розпізнавання мовлення: {e}")
-        return None
 
+# --- БЛОК КЕРУВАННЯ РЕЖИМАМИ (Кнопки) ---
+col1, col2 = st.columns(2)
 
-if st.button("🎤 Поставити питання голосом"):
-    question = record_and_recognize()
+with col1:
+    if not st.session_state.voice_active:
+        if st.button("Розпочати голосовий чат", use_container_width=True):
+            st.session_state.voice_active = True
+            st.rerun()
+    else:
+        if st.button("Припинити голосовий чат", use_container_width=True):
+            st.session_state.voice_active = False
+            st.rerun()
 
-    if question:
-        st.markdown(f"**Ви запитали:** *«{question}»*")
+with col2:
+    if st.button("Очистити історію чату", use_container_width=True):
+        st.session_state.messages = []
+        st.rerun()
 
-        with st.spinner("Голосовий асистент формує відповідь..."):
-            try:
-                # КРОК 1: Робимо ОДИН запит до бекенду, щоб отримати ідеальну коротку відповідь
-                res_text = requests.post(
-                    API_URL_TEXT,
-                    json={"question": question, "mode": "voice"},
-                    timeout=180,
-                )
+st.write("---")
 
-                if res_text.status_code != 200:
-                    st.error(f"Помилка текстового API: {res_text.status_code} — {res_text.text}")
-                    st.stop()
+# --- ВІДОБРАЖЕННЯ ІСТОРІЇ ЧАТУ ---
+# Показуємо всі попередні повідомлення на екрані у вигляді діалогу
+for msg in st.session_state.messages:
+    if msg["role"] == "user":
+        with st.chat_message("user"):
+            st.write(msg["text"])
+    else:
+        with st.chat_message("assistant"):
+            st.write(msg["text"])
 
-                # Дістаємо текст, який згенерувала модель qwen
-                answer = res_text.json().get("answer", "")
+# --- ЛОГІКА РОБОТИ РЕЖИМІВ ---
 
-                # КРОК 2: Відображаємо цей текст на екрані (він гарантовано єдиний)
-                st.subheader("🗣️ Модель відповіла:")
-                st.success(answer)
+# 1. Сценарій: Активовано Голосовий Чат
+if st.session_state.voice_active:
+    voice_question = record_and_recognize()
+    
+    if voice_question:
+        # Обробляємо запит
+        answer_text = send_to_backend(voice_question)
+        
+        if answer_text:
+            # Озвучуємо отриману відповідь на місці за допомогою gTTS
+            tts = gTTS(text=answer_text, lang='uk', slow=False)
+            audio_file = os.path.join(AUDIO_DIR, "temp_reply.mp3")
+            tts.save(audio_file)
+            
+            # Оновлюємо сторінку, щоб повідомлення з'явилися в чаті, і програємо звук
+            st.rerun()
+            
+    # Якщо звуковий файл існує і останнє повідомлення від асистента — даємо його прослухати
+    audio_file = os.path.join(AUDIO_DIR, "temp_reply.mp3")
+    if os.path.exists(audio_file) and st.session_state.messages and st.session_state.messages[-1]["role"] == "assistant":
+        st.audio(audio_file, format="audio/mp3", autoplay=True)
 
-                # КРОК 3: Одразу озвучуємо цей самий текст за допомогою gTTS
-                # Перетворюємо текст на аудіопотік українською мовою
-                tts = gTTS(text=answer, lang='uk', slow=False)
-                
-                audio_file = os.path.join(AUDIO_DIR, "temp_reply.mp3")
-                tts.save(audio_file)
-
-                # КРОК 4: Виводимо аудіоплеєр із цим файлом
-                st.audio(audio_file, format="audio/mp3")
-
-            except Exception as e:
-                st.error(f"Помилка у voice_tester.py: {e}")
+# 2. Сценарій: Звичайний Текстовий Чат (діє, коли голосовий режим вимкнено)
+else:
+    # Стандартний рядок введення Streamlit Chat Input як у ChatGPT
+    if text_question := st.chat_input("Задайте ваше питання тут..."):
+        send_to_backend(text_question)
+        st.rerun()
