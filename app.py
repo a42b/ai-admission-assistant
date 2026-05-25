@@ -177,15 +177,20 @@ def answer_question(question: str, mode: str = "text"):
         "mode": mode  # Передаємо режим ('text' або 'voice') прямо в шаблон промпту
     })
     return response.content, docs
+def main():
+    st.set_page_config(page_title="AI Admission Assistant", page_icon="🎓")
+    st.title("🎓 AI Admission Assistant")
+    st.caption("Асистент для абітурієнтів КПІ на основі документів (Текстовий режим)")
 
-# --- ОДИН СТАНДАРТНИЙ STREAMLIT ДЛЯ ТЕКСТОВИХ ТЕСТІВ ---
-st.set_page_config(page_title="AI Admission Assistant", page_icon="🎓")
-st.title("🎓 AI Admission Assistant")
-st.caption("Асистент для абітурієнтів КПІ на основі документів (Текстовий режим)")
+    question = st.text_input("Введи питання:")
 
-question = st.text_input("Введи питання:")
-if st.button("Запитати") and question.strip():
-    with st.spinner("Шукаю відповідь у документах..."):
-        answer, _ = answer_question(question.strip(), mode="text")
-    st.subheader("Відповідь")
-    st.write(answer)
+    if st.button("Запитати") and question.strip():
+        with st.spinner("Шукаю відповідь у документах..."):
+            answer, _ = answer_question(question.strip(), mode="text")
+
+        st.subheader("Відповідь")
+        st.write(answer)
+
+
+if __name__ == "__main__":
+    main()

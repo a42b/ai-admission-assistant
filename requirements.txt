@@ -16,4 +16,3 @@ gTTS
 requests
 
 SpeechRecognition
-pyaudio
