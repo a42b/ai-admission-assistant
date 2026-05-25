@@ -2,16 +2,16 @@ import os
 import streamlit as st
 import speech_recognition as sr
 import requests
+from gtts import gTTS
 
 API_URL_TEXT = "http://localhost:8000/api/ask"
-API_URL_VOICE = "http://localhost:8000/api/ask_voice_stream"
 
 AUDIO_DIR = "static_audio"
 os.makedirs(AUDIO_DIR, exist_ok=True)
 
 
 st.set_page_config(page_title="Voice Assistant Tester", page_icon="🎙️")
-st.title("🎙️ Голосовий асистент ФІОТ КПІ")
+st.title("Голосовий асистент ФІОТ КПІ")
 st.caption("Демонстраційний інтерфейс для перевірки телефонного сценарію (STT/TTS)")
 
 
@@ -43,7 +43,14 @@ def record_and_recognize():
         return None
 
 
-if st.button("🎤 Поставити питання голосом"):
+def make_audio_from_text(text: str):
+    audio_file = os.path.join(AUDIO_DIR, "temp_reply.mp3")
+    tts = gTTS(text=text, lang="uk", slow=False)
+    tts.save(audio_file)
+    return audio_file
+
+
+if st.button("Поставити питання голосом"):
     question = record_and_recognize()
 
     if question:
@@ -57,27 +64,19 @@ if st.button("🎤 Поставити питання голосом"):
                     timeout=180,
                 )
 
-                res_voice = requests.post(
-                    API_URL_VOICE,
-                    json={"question": question, "mode": "voice"},
-                    timeout=180,
-                )
-
                 if res_text.status_code != 200:
-                    st.error(f"Помилка текстового API: {res_text.status_code} — {res_text.text}")
-                    st.stop()
-
-                if res_voice.status_code != 200:
-                    st.error(f"Помилка голосового API: {res_voice.status_code} — {res_voice.text}")
+                    st.error(f"Помилка API: {res_text.status_code} — {res_text.text}")
                     st.stop()
 
                 answer = res_text.json().get("answer", "")
 
-                audio_file = os.path.join(AUDIO_DIR, "temp_reply.mp3")
-                with open(audio_file, "wb") as f:
-                    f.write(res_voice.content)
+                if not answer:
+                    st.error("API повернуло порожню відповідь.")
+                    st.stop()
 
-                st.subheader("🗣️ Модель відповіла:")
+                audio_file = make_audio_from_text(answer)
+
+                st.subheader("Модель відповіла:")
                 st.success(answer)
                 st.audio(audio_file, format="audio/mp3")
 
