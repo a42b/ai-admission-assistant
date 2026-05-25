@@ -74,7 +74,7 @@ if st.button("🎤 Поставити питання голосом"):
                 tts = gTTS(text=answer, lang='uk', slow=False)
                 
                 audio_file = os.path.join(AUDIO_DIR, "temp_reply.mp3")
-                tts.save(audio_path=audio_file)
+                tts.save(audio_file)
 
                 # КРОК 4: Виводимо аудіоплеєр із цим файлом
                 st.audio(audio_file, format="audio/mp3")
