@@ -1,3 +1,4 @@
+import os
 import streamlit as st
 import speech_recognition as sr
 import requests
@@ -5,40 +6,80 @@ import requests
 API_URL_TEXT = "http://localhost:8000/api/ask"
 API_URL_VOICE = "http://localhost:8000/api/ask_voice_stream"
 
+AUDIO_DIR = "static_audio"
+os.makedirs(AUDIO_DIR, exist_ok=True)
+
+
 st.set_page_config(page_title="Voice Assistant Tester", page_icon="🎙️")
 st.title("🎙️ Голосовий асистент ФІОТ КПІ")
-st.caption("Демонстраційний інтерфейс для перевірки телефону (STT/TTS)")
+st.caption("Демонстраційний інтерфейс для перевірки телефонного сценарію (STT/TTS)")
+
 
 def record_and_recognize():
     recognizer = sr.Recognizer()
+    recognizer.pause_threshold = 1.0
+    recognizer.energy_threshold = 300
+    recognizer.dynamic_energy_threshold = True
+
     with sr.Microphone() as source:
         st.info("Слухаю вас... Говоріть.")
         recognizer.adjust_for_ambient_noise(source, duration=0.8)
-        audio = recognizer.listen(source)
+
+        try:
+            audio = recognizer.listen(source, timeout=5, phrase_time_limit=8)
+        except sr.WaitTimeoutError:
+            st.warning("Я не почув мовлення. Спробуйте ще раз.")
+            return None
+
+    st.info("Розпізнаю мовлення...")
+
     try:
         return recognizer.recognize_google(audio, language="uk-UA")
-    except Exception:
+    except sr.UnknownValueError:
+        st.warning("Не вдалося розпізнати мовлення. Спробуйте сказати чіткіше.")
         return None
+    except sr.RequestError as e:
+        st.error(f"Помилка розпізнавання мовлення: {e}")
+        return None
+
 
 if st.button("🎤 Поставити питання голосом"):
     question = record_and_recognize()
+
     if question:
         st.markdown(f"**Ви запитали:** *«{question}»*")
-        
+
         with st.spinner("Голосовий асистент формує відповідь..."):
             try:
-                # Тягнемо аудіо відповіді
-                res_voice = requests.post(API_URL_VOICE, json={"question": question, "mode": "voice"})
-                # Тягнемо текст відповіді для виведення на екран
-                res_text = requests.post(API_URL_TEXT, json={"question": question, "mode": "voice"}).json()
-                
-                if res_voice.status_code == 200:
-                    audio_file = "static_audio/temp_reply.mp3"
-                    with open(audio_file, "wb") as f:
-                        f.write(res_voice.content)
-                    
-                    st.subheader("🗣️ Модель відповіла:")
-                    st.warning(res_text["answer"])
-                    st.audio(audio_file, format="audio/mp3")
+                res_text = requests.post(
+                    API_URL_TEXT,
+                    json={"question": question, "mode": "voice"},
+                    timeout=180,
+                )
+
+                res_voice = requests.post(
+                    API_URL_VOICE,
+                    json={"question": question, "mode": "voice"},
+                    timeout=180,
+                )
+
+                if res_text.status_code != 200:
+                    st.error(f"Помилка текстового API: {res_text.status_code} — {res_text.text}")
+                    st.stop()
+
+                if res_voice.status_code != 200:
+                    st.error(f"Помилка голосового API: {res_voice.status_code} — {res_voice.text}")
+                    st.stop()
+
+                answer = res_text.json().get("answer", "")
+
+                audio_file = os.path.join(AUDIO_DIR, "temp_reply.mp3")
+                with open(audio_file, "wb") as f:
+                    f.write(res_voice.content)
+
+                st.subheader("🗣️ Модель відповіла:")
+                st.success(answer)
+                st.audio(audio_file, format="audio/mp3")
+
             except Exception as e:
-                st.error("Перевірте, чи запущено сервер у терміналі за допомогою команди: python api.py")
+                st.error(f"Помилка у voice_tester.py: {e}")
