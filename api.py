@@ -45,10 +45,8 @@ async def ask_bot_voice_stream(payload: QuestionRequest):
         raise HTTPException(status_code=400, detail="Питання порожнє")
     
     try:
-        # Для телефону примусово просимо модель згенерувати відповідь у форматі "voice"
         answer, _ = answer_question(payload.question.strip(), mode="voice")
         
-        # Перетворюємо цей короткий текст на аудіофайл
         tts = gTTS(text=answer, lang='uk', slow=False)
         audio_path = os.path.join(AUDIO_DIR, "response.mp3")
         tts.save(audio_path)
